@@ -1,0 +1,20 @@
+server:
+  port: 8080
+
+spring:
+  ai:
+    openai:
+      chat:
+        base-url: https://api.siliconflow.cn
+        api-key: sk-wkekvkigaytxuokxdcbrcimuugyawdnxevihgwvxwerdmzqa
+        options:
+          model: zai-org/GLM-4.6V
+          temperature: 0.5
+      embedding:
+        base-url: https://api.siliconflow.cn
+        api-key: sk-wkekvkigaytxuokxdcbrcimuugyawdnxevihgwvxwerdmzqa
+        options:
+          model: Qwen/Qwen3-Embedding-0.6B
+          dimensions: 1024
+      api-key: sk-wkekvkigaytxuokxdcbrcimuugyawdnxevihgwvxwerdmzqa
+      base-url: https://api.siliconflow.cn
