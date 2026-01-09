@@ -15,4 +15,5 @@ dependencies {
     implementation("net.java.dev.jna:jna-platform:5.13.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.1")
     implementation("org.slf4j:slf4j-simple:2.0.12")
+    implementation("org.commonmark:commonmark:0.22.0")
 }

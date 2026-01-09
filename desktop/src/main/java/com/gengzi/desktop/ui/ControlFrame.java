@@ -20,6 +20,7 @@ import java.util.Locale;
 
 public class ControlFrame extends JFrame {
     private static final int WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+    private static final int WDA_MONITOR = 0x00000001;
     private static final String OS_NAME = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
     private final OverlayWindow overlay;
     private final OcrService ocrService;
@@ -466,7 +467,10 @@ public class ControlFrame extends JFrame {
             return;
         }
         try {
-            User32Ex.INSTANCE.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
+            boolean ok = User32Ex.INSTANCE.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
+            if (!ok) {
+                User32Ex.INSTANCE.SetWindowDisplayAffinity(hwnd, WDA_MONITOR);
+            }
         } catch (Throwable ignored) {
             // Best-effort: older Windows or restricted APIs may fail.
         }
