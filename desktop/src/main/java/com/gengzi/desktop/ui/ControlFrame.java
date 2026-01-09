@@ -14,9 +14,10 @@ import com.sun.jna.win32.W32APIOptions;
 import javax.swing.*;
 import javax.swing.border.Border;
 import java.awt.*;
-import java.awt.image.BufferedImage;
+import java.awt.event.ActionEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.image.BufferedImage;
 import java.util.Locale;
 
 public class ControlFrame extends JFrame {
@@ -25,6 +26,8 @@ public class ControlFrame extends JFrame {
     private static final String OS_NAME = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
     private final OverlayWindow overlay;
     private final OcrService ocrService;
+    private SystemTray systemTray;
+    private TrayIcon trayIcon;
 
     private Rectangle region;
     private final JLabel statusLabel;
@@ -42,9 +45,9 @@ public class ControlFrame extends JFrame {
     private final JButton refreshDisplaysButton;
     private final JButton periscopeToggleButton;
     private final JComboBox<LocaleOption> languageBox;
-    private final JTextField overlayDisplayField;
+    private final JComboBox<DisplayOption> overlayDisplayBox;
     private final JCheckBox overlayExcludeCheck;
-    private final JTextField periscopeDisplayField;
+    private final JComboBox<DisplayOption> periscopeDisplayBox;
     private final JTextArea displayListArea;
     private final int periscopeRefreshMs;
     private final int periscopeWidth;
@@ -123,12 +126,19 @@ public class ControlFrame extends JFrame {
             new LocaleOption(Locale.SIMPLIFIED_CHINESE, "language.zh"),
             new LocaleOption(Locale.ENGLISH, "language.en")
         }));
-        overlayDisplayField = new JTextField(14);
-        overlayDisplayField.setText(overlayDisplayId == null ? "" : overlayDisplayId);
+
+        // 初始化显示器列表
+        DisplayOption[] displayOptions = getDisplayOptions();
+
+        overlayDisplayBox = new JComboBox<>(new DefaultComboBoxModel<>(displayOptions));
+        overlayDisplayBox.setSelectedItem(findDisplayOption(displayOptions, overlayDisplayId));
+
         overlayExcludeCheck = new JCheckBox();
         overlayExcludeCheck.setSelected(overlayExcludeFromCapture);
-        periscopeDisplayField = new JTextField(14);
-        periscopeDisplayField.setText(periscopeDisplayId == null ? "" : periscopeDisplayId);
+
+        periscopeDisplayBox = new JComboBox<>(new DefaultComboBoxModel<>(displayOptions));
+        periscopeDisplayBox.setSelectedItem(findDisplayOption(displayOptions, periscopeDisplayId));
+
         displayListArea = new JTextArea(4, 36);
         displayListArea.setEditable(false);
         displayListArea.setLineWrap(true);
@@ -151,6 +161,7 @@ public class ControlFrame extends JFrame {
         refreshDisplaysButton.addActionListener(e -> refreshDisplayList());
         periscopeToggleButton.addActionListener(e -> togglePeriscope());
         languageBox.addActionListener(e -> onLocaleSelected());
+        refreshDisplaysButton.addActionListener(e -> refreshDisplayComboBoxes());
 
         JPanel buttons = new JPanel(new GridLayout(1, 3, 12, 0));
         buttons.setOpaque(false);
@@ -171,7 +182,7 @@ public class ControlFrame extends JFrame {
         settings.add(overlayDisplayLabel, gbc);
         gbc.gridx = 1;
         gbc.weightx = 1;
-        settings.add(overlayDisplayField, gbc);
+        settings.add(overlayDisplayBox, gbc);
         gbc.gridx = 2;
         gbc.weightx = 0;
         settings.add(applyDisplayButton, gbc);
@@ -189,7 +200,7 @@ public class ControlFrame extends JFrame {
         settings.add(periscopeDisplayLabel, gbc);
         gbc.gridx = 1;
         gbc.weightx = 1;
-        settings.add(periscopeDisplayField, gbc);
+        settings.add(periscopeDisplayBox, gbc);
         gbc.gridx = 2;
         gbc.weightx = 0;
         settings.add(periscopeToggleButton, gbc);
@@ -238,6 +249,10 @@ public class ControlFrame extends JFrame {
         root.add(statusLabel, BorderLayout.SOUTH);
         setContentPane(root);
 
+        // 设置窗口大小
+        setSize(500, 500);
+        setLocationRelativeTo(null);
+
         getRootPane().setDefaultButton(solveButton);
 
         statusKey = "status.region_not_set";
@@ -250,8 +265,22 @@ public class ControlFrame extends JFrame {
             startPeriscope();
         }
 
-        // 注册系统级全局快捷键 Ctrl+P
-        registerSystemGlobalHotkey();
+        // 延迟注册系统级全局快捷键,等待窗口完全显示
+        SwingUtilities.invokeLater(() -> {
+            // 稍微再延迟一下,确保窗口完全准备好
+            Timer timer = new Timer(500, e -> registerSystemGlobalHotkey());
+            timer.setRepeats(false);
+            timer.start();
+        });
+
+        // 初始化系统托盘
+        setupSystemTray();
+
+        // 设置关闭操作为完全退出
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        // 默认隐藏窗口
+        setVisible(false);
     }
 
     /**
@@ -283,6 +312,87 @@ public class ControlFrame extends JFrame {
         if (!success) {
             System.err.println("警告：全局快捷键注册失败，请使用按钮触发");
         }
+    }
+
+    /**
+     * 设置系统托盘
+     */
+    private void setupSystemTray() {
+        if (!SystemTray.isSupported()) {
+            System.err.println("系统托盘不支持");
+            return;
+        }
+
+        try {
+            systemTray = SystemTray.getSystemTray();
+
+            // 创建弹出菜单
+            PopupMenu popup = new PopupMenu();
+
+            MenuItem showItem = new MenuItem("显示 / Show");
+            showItem.addActionListener(e -> {
+                setVisible(true);
+                setState(Frame.NORMAL);
+            });
+
+            MenuItem exitItem = new MenuItem("退出 / Exit");
+            exitItem.addActionListener(e -> {
+                System.exit(0);
+            });
+
+            popup.add(showItem);
+            popup.addSeparator();
+            popup.add(exitItem);
+
+            // 创建托盘图标 (使用简单的图标)
+            Image trayImage = createTrayIconImage();
+            Dimension trayIconSize = systemTray.getTrayIconSize();
+            trayImage = trayImage.getScaledInstance(
+                trayIconSize.width, trayIconSize.height, Image.SCALE_SMOOTH
+            );
+
+            trayIcon = new TrayIcon(trayImage, I18n.tr("app.title") + " - Ctrl+P", popup);
+            trayIcon.setImageAutoSize(true);
+
+            // 点击托盘图标显示窗口
+            trayIcon.addActionListener(e -> {
+                setVisible(true);
+                setState(Frame.NORMAL);
+            });
+
+            systemTray.add(trayIcon);
+
+            System.out.println("系统托盘已初始化");
+
+        } catch (Exception e) {
+            System.err.println("创建系统托盘失败: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * 创建托盘图标
+     */
+    private Image createTrayIconImage() {
+        // 创建一个简单的 16x16 图标
+        BufferedImage image = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+
+        // 绘制背景
+        g.setColor(new Color(70, 130, 180)); // SteelBlue
+        g.fillOval(0, 0, 16, 16);
+
+        // 绘制文字
+        g.setColor(Color.WHITE);
+        g.setFont(new Font("Arial", Font.BOLD, 12));
+        FontMetrics fm = g.getFontMetrics();
+        String text = "A";
+        int x = (16 - fm.stringWidth(text)) / 2;
+        int y = (16 + fm.getAscent()) / 2 - 2;
+        g.drawString(text, x, y);
+
+        g.dispose();
+        return image;
     }
 
     private void updateTexts() {
@@ -331,7 +441,8 @@ public class ControlFrame extends JFrame {
 
 
     private void applyDisplaySettings() {
-        String overlayDisplayId = overlayDisplayField.getText();
+        DisplayOption selected = (DisplayOption) overlayDisplayBox.getSelectedItem();
+        String overlayDisplayId = selected != null ? selected.displayId : "";
         overlay.setTargetDisplayId(overlayDisplayId);
         overlay.setExcludeFromCapture(overlayExcludeCheck.isSelected());
         if (overlay.isVisible()) {
@@ -352,7 +463,8 @@ public class ControlFrame extends JFrame {
     }
 
     private void startPeriscope() {
-        String displayId = periscopeDisplayField.getText();
+        DisplayOption selected = (DisplayOption) periscopeDisplayBox.getSelectedItem();
+        String displayId = selected != null ? selected.displayId : null;
         if (displayId == null || displayId.isBlank()) {
             setStatus("status.periscope_missing_id");
             return;
@@ -380,6 +492,66 @@ public class ControlFrame extends JFrame {
 
     private void refreshDisplayList() {
         displayListArea.setText(buildDisplayList());
+    }
+
+    private void refreshDisplayComboBoxes() {
+        // 保存当前选择
+        DisplayOption overlaySelected = (DisplayOption) overlayDisplayBox.getSelectedItem();
+        DisplayOption periscopeSelected = (DisplayOption) periscopeDisplayBox.getSelectedItem();
+
+        // 重新加载显示器列表
+        DisplayOption[] newOptions = getDisplayOptions();
+        overlayDisplayBox.setModel(new DefaultComboBoxModel<>(newOptions));
+        periscopeDisplayBox.setModel(new DefaultComboBoxModel<>(newOptions));
+
+        // 尝试恢复之前的选择
+        if (overlaySelected != null) {
+            DisplayOption match = findDisplayOption(newOptions, overlaySelected.displayId);
+            if (match != null) {
+                overlayDisplayBox.setSelectedItem(match);
+            }
+        }
+        if (periscopeSelected != null) {
+            DisplayOption match = findDisplayOption(newOptions, periscopeSelected.displayId);
+            if (match != null) {
+                periscopeDisplayBox.setSelectedItem(match);
+            }
+        }
+
+        refreshDisplayList();
+    }
+
+    private DisplayOption[] getDisplayOptions() {
+        GraphicsEnvironment env = GraphicsEnvironment.getLocalGraphicsEnvironment();
+        GraphicsDevice[] devices = env.getScreenDevices();
+
+        // 添加一个"默认"选项
+        DisplayOption[] options = new DisplayOption[devices.length + 1];
+        options[0] = new DisplayOption("", I18n.tr("display.default"));
+
+        for (int i = 0; i < devices.length; i++) {
+            GraphicsDevice device = devices[i];
+            Rectangle bounds = device.getDefaultConfiguration().getBounds();
+            String label = "[" + i + "] " + device.getIDstring();
+            options[i + 1] = new DisplayOption(device.getIDstring(), label);
+        }
+
+        return options;
+    }
+
+    private DisplayOption findDisplayOption(DisplayOption[] options, String displayId) {
+        if (displayId == null || displayId.isBlank()) {
+            return options.length > 0 ? options[0] : null;
+        }
+
+        for (DisplayOption option : options) {
+            if (displayId.equals(option.displayId)) {
+                return option;
+            }
+        }
+
+        // 如果没找到,返回默认选项
+        return options.length > 0 ? options[0] : null;
     }
 
     private String buildDisplayList() {
@@ -574,6 +746,21 @@ public class ControlFrame extends JFrame {
         @Override
         public String toString() {
             return I18n.tr(labelKey);
+        }
+    }
+
+    private static final class DisplayOption {
+        private final String displayId;
+        private final String label;
+
+        private DisplayOption(String displayId, String label) {
+            this.displayId = displayId;
+            this.label = label;
+        }
+
+        @Override
+        public String toString() {
+            return label;
         }
     }
 
