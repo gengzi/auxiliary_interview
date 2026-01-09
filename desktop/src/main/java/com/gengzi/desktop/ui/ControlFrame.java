@@ -5,13 +5,22 @@ import com.gengzi.desktop.i18n.I18n;
 import com.gengzi.desktop.ocr.OcrService;
 import com.gengzi.desktop.overlay.OverlayWindow;
 import com.gengzi.desktop.overlay.SelectionWindow;
+import com.sun.jna.Native;
+import com.sun.jna.Pointer;
+import com.sun.jna.platform.win32.User32;
+import com.sun.jna.platform.win32.WinDef.HWND;
+import com.sun.jna.win32.W32APIOptions;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.Locale;
 
 public class ControlFrame extends JFrame {
+    private static final int WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+    private static final String OS_NAME = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
     private final OverlayWindow overlay;
     private final OcrService ocrService;
 
@@ -65,10 +74,20 @@ public class ControlFrame extends JFrame {
         this.periscopeHeight = periscopeHeight;
 
         setTitle(I18n.tr("app.title"));
-        setType(Type.UTILITY);
         setSize(640, 380);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowOpened(WindowEvent e) {
+                applyExcludeFromCapture();
+            }
+
+            @Override
+            public void windowActivated(WindowEvent e) {
+                applyExcludeFromCapture();
+            }
+        });
 
         selectButton = new JButton();
         solveButton = new JButton();
@@ -438,6 +457,33 @@ public class ControlFrame extends JFrame {
         }
     }
 
+    private void applyExcludeFromCapture() {
+        if (!isWindows() || !isDisplayable()) {
+            return;
+        }
+        HWND hwnd = getHwnd();
+        if (hwnd == null) {
+            return;
+        }
+        try {
+            User32Ex.INSTANCE.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
+        } catch (Throwable ignored) {
+            // Best-effort: older Windows or restricted APIs may fail.
+        }
+    }
+
+    private HWND getHwnd() {
+        Pointer pointer = Native.getComponentPointer(this);
+        if (pointer == null) {
+            return null;
+        }
+        return new HWND(pointer);
+    }
+
+    private static boolean isWindows() {
+        return OS_NAME.contains("win");
+    }
+
     private static final class LocaleOption {
         private final Locale locale;
         private final String labelKey;
@@ -451,5 +497,11 @@ public class ControlFrame extends JFrame {
         public String toString() {
             return I18n.tr(labelKey);
         }
+    }
+
+    private interface User32Ex extends User32 {
+        User32Ex INSTANCE = Native.load("user32", User32Ex.class, W32APIOptions.DEFAULT_OPTIONS);
+
+        boolean SetWindowDisplayAffinity(HWND hWnd, int dwAffinity);
     }
 }
