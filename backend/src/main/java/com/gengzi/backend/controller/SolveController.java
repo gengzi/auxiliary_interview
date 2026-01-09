@@ -40,8 +40,8 @@ public class SolveController {
      */
     @PostMapping(value = "/solve-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter solveStream(@RequestBody SolveRequest request) {
-        // 创建SSE发射器，超时时间60秒
-        SseEmitter emitter = new SseEmitter(60000L);
+        // Create SSE emitter with a longer timeout for LLM responses.
+        SseEmitter emitter = new SseEmitter(180000L);
 
         // 异步执行流式处理
         CompletableFuture.runAsync(() -> {
@@ -71,8 +71,8 @@ public class SolveController {
      */
     @PostMapping(value = "/solve-image-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter solveWithImageStream(@RequestBody Map<String, String> request) {
-        // 创建SSE发射器，超时时间60秒
-        SseEmitter emitter = new SseEmitter(60000L);
+        // Create SSE emitter with a longer timeout for image analysis.
+        SseEmitter emitter = new SseEmitter(240000L);
 
         // 异步执行流式处理
         CompletableFuture.runAsync(() -> {

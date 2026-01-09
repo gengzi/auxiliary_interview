@@ -18,6 +18,8 @@ import java.util.function.Consumer;
  * 提供文本问答和图片分析功能，支持流式和非流式调用
  */
 public class BackendClient {
+    private static final Duration TEXT_TIMEOUT = Duration.ofSeconds(180);
+    private static final Duration IMAGE_TIMEOUT = Duration.ofSeconds(240);
     private final HttpClient httpClient;
     private final ObjectMapper mapper;
     private final String baseUrl;
@@ -43,7 +45,7 @@ public class BackendClient {
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/api/solve"))
-                .timeout(Duration.ofSeconds(30))
+                .timeout(TEXT_TIMEOUT)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
                 .build();
@@ -70,7 +72,7 @@ public class BackendClient {
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/api/solve-stream"))
-                .timeout(Duration.ofSeconds(60))
+                .timeout(TEXT_TIMEOUT)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
                 .build();
@@ -98,7 +100,7 @@ public class BackendClient {
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/api/solve-image"))
-                .timeout(Duration.ofSeconds(60))
+                .timeout(IMAGE_TIMEOUT)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
                 .build();
@@ -127,7 +129,7 @@ public class BackendClient {
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/api/solve-image-stream"))
-                .timeout(Duration.ofSeconds(60))
+                .timeout(IMAGE_TIMEOUT)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
                 .build();
@@ -153,10 +155,17 @@ public class BackendClient {
                 if (line.startsWith("data:")) {
                     String data = line.substring(5).trim();
                     if (!data.isEmpty()) {
-                        chunkConsumer.accept(data);
+                        try {
+                            chunkConsumer.accept(data);
+                        } catch (Exception e) {
+                            System.err.println("Error consuming chunk: " + e.getMessage());
+                        }
                     }
                 }
             }
+        } catch (Exception e) {
+            System.err.println("Error parsing SSE stream: " + e.getMessage());
+            throw e;
         }
     }
 }

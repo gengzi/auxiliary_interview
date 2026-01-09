@@ -6,19 +6,21 @@ import com.sun.jna.Pointer;
 import com.sun.jna.platform.win32.User32;
 import com.sun.jna.platform.win32.WinDef.HWND;
 import com.sun.jna.platform.win32.WinUser;
-
+import javax.swing.BorderFactory;
 import javax.swing.JComponent;
+import javax.swing.JEditorPane;
+import javax.swing.JScrollPane;
 import javax.swing.JWindow;
+import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Font;
-import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GraphicsEnvironment;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Locale;
+import com.sun.jna.win32.W32APIOptions;
 
 /**
  * 透明浮层窗口，用于在屏幕指定区域显示LLM回答结果
@@ -30,16 +32,31 @@ import java.util.List;
  */
 public class OverlayWindow extends JWindow {
     private static final int OVERLAY_GAP = 8;
-    private static final int OVERLAY_WIDTH = 320;
-    private static final int OVERLAY_MIN_HEIGHT = 160;
-    private static final int OVERLAY_MAX_HEIGHT = 360;
+    private static final int OVERLAY_WIDTH = 420;
+    private static final int OVERLAY_MIN_HEIGHT = 200;
+    private static final int OVERLAY_MAX_HEIGHT = 520;
+    private static final int WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+    private static final int WDA_NONE = 0x00000000;
+    private static final String OS_NAME = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
     private final OverlayPanel panel;
+    private String targetDisplayId;
+    private boolean excludeFromCapture;
 
     /**
      * 初始化浮层窗口
      * 设置透明背景、置顶、不可聚焦等属性
      */
     public OverlayWindow() {
+        this("", true);
+    }
+
+    public OverlayWindow(String targetDisplayId) {
+        this(targetDisplayId, true);
+    }
+
+    public OverlayWindow(String targetDisplayId, boolean excludeFromCapture) {
+        this.targetDisplayId = targetDisplayId == null ? "" : targetDisplayId.trim().toLowerCase(Locale.ROOT);
+        this.excludeFromCapture = excludeFromCapture;
         panel = new OverlayPanel();
         // 完全透明背景
         setBackground(new Color(0, 0, 0, 0));
@@ -55,14 +72,33 @@ public class OverlayWindow extends JWindow {
      * @param region 屏幕区域坐标，如果为null则使用当前bounds
      */
     public void showOverlay(Rectangle region) {
+        Rectangle targetScreen = getTargetScreenBounds();
         if (region != null) {
-            setBounds(calculateOverlayBounds(region));
+            if (!targetScreen.intersects(region)) {
+                setBounds(calculateOverlayBoundsForScreen(targetScreen));
+            } else {
+                setBounds(calculateOverlayBounds(region, targetScreen));
+            }
+        } else if (!targetDisplayId.isBlank()) {
+            setBounds(calculateOverlayBoundsForScreen(targetScreen));
         }
         if (!isVisible()) {
             setVisible(true);
             enableClickThrough();
+            applyDisplayAffinity();
         }
         repaint();
+    }
+
+    public void setTargetDisplayId(String targetDisplayId) {
+        this.targetDisplayId = targetDisplayId == null ? "" : targetDisplayId.trim().toLowerCase(Locale.ROOT);
+    }
+
+    public void setExcludeFromCapture(boolean excludeFromCapture) {
+        this.excludeFromCapture = excludeFromCapture;
+        if (isDisplayable()) {
+            applyDisplayAffinity();
+        }
     }
 
     /**
@@ -92,9 +128,42 @@ public class OverlayWindow extends JWindow {
         if (hwnd == null) {
             return;
         }
-        int exStyle = User32.INSTANCE.GetWindowLong(hwnd, WinUser.GWL_EXSTYLE);
-        exStyle = exStyle | WinUser.WS_EX_LAYERED | WinUser.WS_EX_TRANSPARENT | WinUser.WS_EX_COMPOSITED;
-        User32.INSTANCE.SetWindowLong(hwnd, WinUser.GWL_EXSTYLE, exStyle);
+        if (isWindows()) {
+            int exStyle = User32.INSTANCE.GetWindowLong(hwnd, WinUser.GWL_EXSTYLE);
+            exStyle = exStyle | WinUser.WS_EX_LAYERED | WinUser.WS_EX_TRANSPARENT | WinUser.WS_EX_COMPOSITED;
+            User32.INSTANCE.SetWindowLong(hwnd, WinUser.GWL_EXSTYLE, exStyle);
+        }
+    }
+
+    private void applyExcludeFromCapture() {
+        if (!isWindows()) {
+            return;
+        }
+        HWND hwnd = getHwnd();
+        if (hwnd == null) {
+            return;
+        }
+        try {
+            User32Ex.INSTANCE.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
+        } catch (Throwable ignored) {
+            // Best-effort: older Windows or restricted APIs may fail.
+        }
+    }
+
+    private void applyDisplayAffinity() {
+        if (!isWindows()) {
+            return;
+        }
+        HWND hwnd = getHwnd();
+        if (hwnd == null) {
+            return;
+        }
+        try {
+            int affinity = excludeFromCapture ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE;
+            User32Ex.INSTANCE.SetWindowDisplayAffinity(hwnd, affinity);
+        } catch (Throwable ignored) {
+            // Best-effort: older Windows or restricted APIs may fail.
+        }
     }
 
     /**
@@ -109,8 +178,11 @@ public class OverlayWindow extends JWindow {
         return new HWND(pointer);
     }
 
-    private Rectangle calculateOverlayBounds(Rectangle region) {
-        Rectangle screen = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+    private static boolean isWindows() {
+        return OS_NAME.contains("win");
+    }
+
+    private Rectangle calculateOverlayBounds(Rectangle region, Rectangle screen) {
         int maxWidth = Math.max(120, Math.min(OVERLAY_WIDTH, screen.width - OVERLAY_GAP * 2));
         int preferredHeight = Math.min(
             Math.max(OVERLAY_MIN_HEIGHT, region.height),
@@ -160,6 +232,29 @@ public class OverlayWindow extends JWindow {
         return new Rectangle(x, y, width, height);
     }
 
+    private Rectangle calculateOverlayBoundsForScreen(Rectangle screen) {
+        int width = Math.max(120, Math.min(OVERLAY_WIDTH, screen.width - OVERLAY_GAP * 2));
+        int height = Math.min(OVERLAY_MAX_HEIGHT, screen.height - OVERLAY_GAP * 2);
+        height = Math.max(OVERLAY_MIN_HEIGHT, height);
+        int x = screen.x + screen.width - OVERLAY_GAP - width;
+        int y = screen.y + OVERLAY_GAP;
+        return new Rectangle(x, y, width, height);
+    }
+
+    private Rectangle getTargetScreenBounds() {
+        GraphicsEnvironment env = GraphicsEnvironment.getLocalGraphicsEnvironment();
+        if (targetDisplayId.isBlank()) {
+            return env.getMaximumWindowBounds();
+        }
+        for (java.awt.GraphicsDevice device : env.getScreenDevices()) {
+            String id = device.getIDstring();
+            if (id != null && id.toLowerCase(Locale.ROOT).contains(targetDisplayId)) {
+                return device.getDefaultConfiguration().getBounds();
+            }
+        }
+        return env.getMaximumWindowBounds();
+    }
+
     private static int clamp(int value, int min, int max) {
         if (value < min) {
             return min;
@@ -176,93 +271,60 @@ public class OverlayWindow extends JWindow {
     private static class OverlayPanel extends JComponent {
         private static final int PADDING = 12;
         private static final Font OVERLAY_FONT = resolveFont();
+        private final JEditorPane editor;
+        private final JScrollPane scrollPane;
         private String text = "";
 
+        private OverlayPanel() {
+            setLayout(new BorderLayout());
+            setOpaque(false);
+
+            editor = new JEditorPane();
+            editor.setContentType("text/plain");
+            editor.setEditable(false);
+            editor.setOpaque(false);
+            editor.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, true);
+            editor.setFont(OVERLAY_FONT);
+            editor.setForeground(Color.WHITE);
+            editor.setBorder(BorderFactory.createEmptyBorder(PADDING, PADDING, PADDING, PADDING));
+
+            scrollPane = new JScrollPane(editor);
+            scrollPane.setOpaque(false);
+            scrollPane.getViewport().setOpaque(false);
+            scrollPane.setBorder(BorderFactory.createEmptyBorder());
+            scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+            scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+
+            add(scrollPane, BorderLayout.CENTER);
+        }
+
         /**
-         * 设置要显示的文本并触发重绘
-         * @param text 文本内容，null或空字符串显示"No answer yet"
+         * ???????????????????????????????????????
+         * @param text ???????????????null?????????????????????No answer yet"
          */
         public void setText(String text) {
             this.text = text == null ? "" : text;
+            if (this.text.isBlank()) {
+                editor.setText(I18n.tr("overlay.no_answer"));
+            } else {
+                editor.setText(this.text);
+            }
+            editor.setCaretPosition(editor.getDocument().getLength());
             repaint();
         }
 
         /**
-         * 绘制浮层内容：半透明背景圆角矩形 + 白色文本
-         * @param g 图形上下文
+         * ???????????????????????????????????????????????? + Markdown??????
+         * @param g ???????????????
          */
         @Override
         protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
-            // 启用文本抗锯齿
+            // ?????????????????????
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-            int width = getWidth();
-            int height = getHeight();
-
-            // 绘制半透明黑色背景，圆角矩形
-            g2.setColor(new Color(0, 0, 0, 120));
-            g2.fillRoundRect(0, 0, width, height, 12, 12);
-
-            // 绘制白色文本
-            g2.setColor(Color.WHITE);
-            g2.setFont(OVERLAY_FONT);
-            FontMetrics fm = g2.getFontMetrics();
-            int lineHeight = fm.getHeight();
-
-            // 计算最大可用宽度（减去左右padding）
-            int maxWidth = Math.max(1, width - PADDING * 2);
-            List<String> lines = wrapText(text, fm, maxWidth);
-
-            // 逐行绘制文本
-            int y = PADDING + fm.getAscent();
-            for (String line : lines) {
-                if (y > height - PADDING) {
-                    break;
-                }
-                g2.drawString(line, PADDING, y);
-                y += lineHeight;
-            }
             g2.dispose();
-        }
-
-        /**
-         * 文本自动换行处理
-         * 按空格分词，根据maxWidth计算每行能容纳的单词数
-         * @param input 原始文本
-         * @param fm 字体度量信息
-         * @param maxWidth 最大行宽（像素）
-         * @return 换行后的文本行列表
-         */
-        private List<String> wrapText(String input, FontMetrics fm, int maxWidth) {
-            List<String> lines = new ArrayList<>();
-            if (input == null || input.isBlank()) {
-                lines.add(I18n.tr("overlay.no_answer"));
-                return lines;
-            }
-            // 移除回车符，按空白字符分词
-            String[] words = input.replace("\r", "").split("\\s+");
-            StringBuilder line = new StringBuilder();
-            for (String word : words) {
-                if (line.length() == 0) {
-                    line.append(word);
-                    continue;
-                }
-                String test = line + " " + word;
-                if (fm.stringWidth(test) <= maxWidth) {
-                    line.append(" ").append(word);
-                } else {
-                    // 当前行已满，添加到结果并开始新行
-                    lines.add(line.toString());
-                    line.setLength(0);
-                    line.append(word);
-                }
-            }
-            // 添加最后一行
-            if (line.length() > 0) {
-                lines.add(line.toString());
-            }
-            return lines;
+            super.paintComponent(g);
         }
 
         private static Font resolveFont() {
@@ -288,5 +350,11 @@ public class OverlayWindow extends JWindow {
             }
             return new Font(Font.SANS_SERIF, Font.PLAIN, 16);
         }
+    }
+
+    private interface User32Ex extends User32 {
+        User32Ex INSTANCE = Native.load("user32", User32Ex.class, W32APIOptions.DEFAULT_OPTIONS);
+
+        boolean SetWindowDisplayAffinity(HWND hWnd, int dwAffinity);
     }
 }

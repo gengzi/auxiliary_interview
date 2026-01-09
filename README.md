@@ -19,6 +19,12 @@ Backend
 Desktop
 - Configure env if needed:
   - BACKEND_URL (default http://localhost:8080)
+  - OVERLAY_DISPLAY_ID (display id substring for showing the overlay on a target screen)
+  - OVERLAY_EXCLUDE_FROM_CAPTURE (default true)
+  - PERISCOPE_DISPLAY_ID (display id substring to mirror in the periscope window)
+  - PERISCOPE_REFRESH_MS (default 120)
+  - PERISCOPE_WINDOW_WIDTH (default 640)
+  - PERISCOPE_WINDOW_HEIGHT (default 360)
   - TESSERACT_PATH (optional, Tesseract install dir)
   - TESSDATA_PATH (optional, tessdata dir)
   - TESSERACT_LANG (default eng)

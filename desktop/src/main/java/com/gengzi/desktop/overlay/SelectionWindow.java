@@ -1,5 +1,11 @@
 package com.gengzi.desktop.overlay;
 
+import com.sun.jna.Native;
+import com.sun.jna.Pointer;
+import com.sun.jna.platform.win32.User32;
+import com.sun.jna.platform.win32.WinDef.HWND;
+import com.sun.jna.win32.W32APIOptions;
+
 import javax.swing.JWindow;
 import java.awt.AWTEvent;
 import java.awt.Color;
@@ -11,6 +17,7 @@ import java.awt.Toolkit;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.concurrent.CountDownLatch;
+import java.util.Locale;
 
 /**
  * 屏幕区域选择窗口
@@ -21,6 +28,8 @@ import java.util.concurrent.CountDownLatch;
  * 4. 选择完成后自动关闭并返回区域坐标
  */
 public class SelectionWindow extends JWindow {
+    private static final int WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+    private static final String OS_NAME = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
     private Point start;
     private Point end;
     private Rectangle selection;
@@ -131,6 +140,40 @@ public class SelectionWindow extends JWindow {
     public static Rectangle selectRegion() {
         SelectionWindow window = new SelectionWindow();
         window.setVisible(true);
+        window.applyExcludeFromCapture();
         return window.waitForSelection();
+    }
+
+    private void applyExcludeFromCapture() {
+        if (!isWindows()) {
+            return;
+        }
+        HWND hwnd = getHwnd();
+        if (hwnd == null) {
+            return;
+        }
+        try {
+            User32Ex.INSTANCE.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
+        } catch (Throwable ignored) {
+            // Best-effort: older Windows or restricted APIs may fail.
+        }
+    }
+
+    private HWND getHwnd() {
+        Pointer pointer = Native.getComponentPointer(this);
+        if (pointer == null) {
+            return null;
+        }
+        return new HWND(pointer);
+    }
+
+    private static boolean isWindows() {
+        return OS_NAME.contains("win");
+    }
+
+    private interface User32Ex extends User32 {
+        User32Ex INSTANCE = Native.load("user32", User32Ex.class, W32APIOptions.DEFAULT_OPTIONS);
+
+        boolean SetWindowDisplayAffinity(HWND hWnd, int dwAffinity);
     }
 }
