@@ -12,6 +12,7 @@ import com.sun.jna.platform.win32.WinDef.HWND;
 import com.sun.jna.win32.W32APIOptions;
 
 import javax.swing.*;
+import javax.swing.border.Border;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.event.WindowAdapter;
@@ -31,6 +32,9 @@ public class ControlFrame extends JFrame {
     private final JLabel overlayDisplayLabel;
     private final JLabel periscopeDisplayLabel;
     private final JLabel displayListLabel;
+    private final JLabel titleLabel;
+    private final JLabel actionsTitleLabel;
+    private final JLabel displayTitleLabel;
     private final JButton selectButton;
     private final JButton solveButton;
     private final JButton toggleOverlayButton;
@@ -75,7 +79,9 @@ public class ControlFrame extends JFrame {
         this.periscopeHeight = periscopeHeight;
 
         setTitle(I18n.tr("app.title"));
-        setSize(640, 380);
+        AppTheme.applyWindowIcon(this);
+        setSize(720, 460);
+        setMinimumSize(new Dimension(680, 420));
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
@@ -98,6 +104,17 @@ public class ControlFrame extends JFrame {
         periscopeToggleButton = new JButton();
 
         statusLabel = new JLabel();
+        statusLabel.setBorder(BorderFactory.createEmptyBorder(6, 0, 0, 0));
+        Color statusColor = UIManager.getColor("Label.disabledForeground");
+        if (statusColor != null) {
+            statusLabel.setForeground(statusColor);
+        }
+        titleLabel = new JLabel();
+        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 16f));
+        actionsTitleLabel = new JLabel();
+        actionsTitleLabel.setFont(actionsTitleLabel.getFont().deriveFont(Font.BOLD));
+        displayTitleLabel = new JLabel();
+        displayTitleLabel.setFont(displayTitleLabel.getFont().deriveFont(Font.BOLD));
         languageLabel = new JLabel();
         overlayDisplayLabel = new JLabel();
         periscopeDisplayLabel = new JLabel();
@@ -116,6 +133,15 @@ public class ControlFrame extends JFrame {
         displayListArea.setEditable(false);
         displayListArea.setLineWrap(true);
         displayListArea.setWrapStyleWord(true);
+        displayListArea.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        Color textBg = UIManager.getColor("TextField.background");
+        if (textBg != null) {
+            displayListArea.setBackground(textBg);
+        }
+        Color textFg = UIManager.getColor("TextField.foreground");
+        if (textFg != null) {
+            displayListArea.setForeground(textFg);
+        }
         displayListArea.setText(buildDisplayList());
 
         selectButton.addActionListener(e -> selectRegion());
@@ -126,65 +152,93 @@ public class ControlFrame extends JFrame {
         periscopeToggleButton.addActionListener(e -> togglePeriscope());
         languageBox.addActionListener(e -> onLocaleSelected());
 
-        JPanel buttons = new JPanel();
+        JPanel buttons = new JPanel(new GridLayout(1, 3, 12, 0));
+        buttons.setOpaque(false);
         buttons.add(selectButton);
         buttons.add(solveButton);
         buttons.add(toggleOverlayButton);
 
         JPanel settings = new JPanel(new GridBagLayout());
+        settings.setOpaque(false);
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(4, 6, 4, 6);
+        gbc.insets = new Insets(6, 8, 6, 8);
         gbc.anchor = GridBagConstraints.WEST;
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
         gbc.gridx = 0;
         gbc.gridy = 0;
+        gbc.weightx = 0;
         settings.add(overlayDisplayLabel, gbc);
         gbc.gridx = 1;
+        gbc.weightx = 1;
         settings.add(overlayDisplayField, gbc);
         gbc.gridx = 2;
+        gbc.weightx = 0;
         settings.add(applyDisplayButton, gbc);
 
         gbc.gridx = 0;
         gbc.gridy = 1;
         settings.add(new JLabel(""), gbc);
         gbc.gridx = 1;
+        gbc.gridwidth = 2;
         settings.add(overlayExcludeCheck, gbc);
+        gbc.gridwidth = 1;
 
         gbc.gridx = 0;
         gbc.gridy = 2;
         settings.add(periscopeDisplayLabel, gbc);
         gbc.gridx = 1;
+        gbc.weightx = 1;
         settings.add(periscopeDisplayField, gbc);
         gbc.gridx = 2;
+        gbc.weightx = 0;
         settings.add(periscopeToggleButton, gbc);
 
-        gbc.gridx = 0;
-        gbc.gridy = 3;
-        settings.add(displayListLabel, gbc);
-        gbc.gridx = 2;
-        settings.add(refreshDisplaysButton, gbc);
+        JPanel displayHeader = new JPanel(new BorderLayout());
+        displayHeader.setOpaque(false);
+        displayHeader.add(displayListLabel, BorderLayout.WEST);
+        displayHeader.add(refreshDisplaysButton, BorderLayout.EAST);
 
-        gbc.gridx = 0;
-        gbc.gridy = 4;
-        gbc.gridwidth = 3;
-        gbc.fill = GridBagConstraints.BOTH;
-        gbc.weightx = 1.0;
-        gbc.weighty = 1.0;
-        settings.add(new JScrollPane(displayListArea), gbc);
+        JScrollPane displayScroll = new JScrollPane(displayListArea);
+        Border inputBorder = UIManager.getBorder("TextField.border");
+        if (inputBorder != null) {
+            displayScroll.setBorder(inputBorder);
+        }
 
-        JPanel languagePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JPanel displayContent = new JPanel();
+        displayContent.setOpaque(false);
+        displayContent.setLayout(new BoxLayout(displayContent, BoxLayout.Y_AXIS));
+        displayContent.add(settings);
+        displayContent.add(Box.createVerticalStrut(8));
+        displayContent.add(displayHeader);
+        displayContent.add(Box.createVerticalStrut(4));
+        displayContent.add(displayScroll);
+
+        JPanel languagePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        languagePanel.setOpaque(false);
         languagePanel.add(languageLabel);
         languagePanel.add(languageBox);
 
-        setLayout(new BorderLayout(8, 8));
-        add(languagePanel, BorderLayout.NORTH);
-        JPanel center = new JPanel();
-        center.setLayout(new BoxLayout(center, BoxLayout.Y_AXIS));
-        center.add(buttons);
-        center.add(settings);
-        add(center, BorderLayout.CENTER);
-        add(statusLabel, BorderLayout.SOUTH);
+        JPanel header = new JPanel(new BorderLayout());
+        header.setOpaque(false);
+        header.add(titleLabel, BorderLayout.WEST);
+        header.add(languagePanel, BorderLayout.EAST);
+
+        JPanel body = new JPanel();
+        body.setOpaque(false);
+        body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
+        body.add(buildSection(actionsTitleLabel, buttons));
+        body.add(Box.createVerticalStrut(14));
+        body.add(buildSection(displayTitleLabel, displayContent));
+
+        JPanel root = new JPanel(new BorderLayout(12, 12));
+        root.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+        root.add(header, BorderLayout.NORTH);
+        root.add(body, BorderLayout.CENTER);
+        root.add(statusLabel, BorderLayout.SOUTH);
+        setContentPane(root);
+
+        getRootPane().setDefaultButton(solveButton);
 
         statusKey = "status.region_not_set";
         statusArgs = new Object[0];
@@ -233,6 +287,9 @@ public class ControlFrame extends JFrame {
 
     private void updateTexts() {
         setTitle(I18n.tr("app.title"));
+        titleLabel.setText(I18n.tr("app.title"));
+        actionsTitleLabel.setText(I18n.tr("section.actions"));
+        displayTitleLabel.setText(I18n.tr("section.display"));
         selectButton.setText(I18n.tr("button.select_region"));
         solveButton.setText(I18n.tr("button.capture_solve"));
         toggleOverlayButton.setText(I18n.tr("button.toggle_overlay"));
@@ -255,6 +312,23 @@ public class ControlFrame extends JFrame {
             periscopeToggleButton.setText(I18n.tr("button.stop_periscope"));
         }
     }
+
+    private JPanel buildSection(JLabel title, JComponent content) {
+        JPanel section = new JPanel(new BorderLayout(0, 8));
+        section.setOpaque(false);
+        JPanel header = new JPanel();
+        header.setOpaque(false);
+        header.setLayout(new BoxLayout(header, BoxLayout.X_AXIS));
+        header.add(title);
+        header.add(Box.createHorizontalStrut(8));
+        JSeparator separator = new JSeparator();
+        separator.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+        header.add(separator);
+        section.add(header, BorderLayout.NORTH);
+        section.add(content, BorderLayout.CENTER);
+        return section;
+    }
+
 
     private void applyDisplaySettings() {
         String overlayDisplayId = overlayDisplayField.getText();

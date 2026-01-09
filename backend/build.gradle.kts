@@ -15,6 +15,18 @@ dependencyManagement {
     }
 }
 
+tasks.compileJava {
+    options.encoding = "UTF-8"
+}
+
+tasks.compileTestJava {
+    options.encoding = "UTF-8"
+}
+
+tasks.javadoc {
+    options.encoding = "UTF-8"
+}
+
 dependencies {
     implementation ("org.springframework.boot:spring-boot-starter")
     implementation("org.springframework.boot:spring-boot-starter-web")

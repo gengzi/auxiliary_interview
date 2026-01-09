@@ -5,6 +5,7 @@ import com.gengzi.desktop.llm.BackendClient;
 import com.gengzi.desktop.ocr.OcrService;
 import com.gengzi.desktop.overlay.OverlayWindow;
 import com.gengzi.desktop.ui.ControlFrame;
+import com.gengzi.desktop.ui.AppTheme;
 
 import javax.swing.SwingUtilities;
 import java.awt.GraphicsDevice;
@@ -13,6 +14,7 @@ import java.awt.Rectangle;
 
 public class DesktopApp {
     public static void main(String[] args) {
+        AppTheme.install();
         printDisplays();
         AppConfig config = new AppConfig();
 

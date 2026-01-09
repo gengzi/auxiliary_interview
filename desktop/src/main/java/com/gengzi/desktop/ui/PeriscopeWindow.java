@@ -46,6 +46,7 @@ public class PeriscopeWindow extends JFrame {
         imagePanel = new ImagePanel();
 
         setTitle("Periscope");
+        AppTheme.applyWindowIcon(this);
         setType(Type.UTILITY);
         setSize(Math.max(240, width), Math.max(180, height));
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);

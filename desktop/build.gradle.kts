@@ -10,7 +10,20 @@ application {
     mainClass.set("com.gengzi.desktop.DesktopApp")
 }
 
+tasks.compileJava {
+    options.encoding = "UTF-8"
+}
+
+tasks.compileTestJava {
+    options.encoding = "UTF-8"
+}
+
+tasks.javadoc {
+    options.encoding = "UTF-8"
+}
+
 dependencies {
+    implementation("com.formdev:flatlaf:3.4.1")
     implementation("net.java.dev.jna:jna:5.13.0")
     implementation("net.java.dev.jna:jna-platform:5.13.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.1")
